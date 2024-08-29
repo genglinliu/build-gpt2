@@ -67,3 +67,32 @@ class Block(nn.Module):
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
+    
+@dataclass
+class GPTConfig:
+    block_size: int = 1024 # maximum sequence length
+    n_layer: int = 12 # number of transformer blocks
+    n_head: int = 12  # number of attention heads
+    n_embd: int = 768 # embedding dimensionality
+    vocab_size: int = 50257 # number of tokens in the vocabulary: 50000 BPE merges + 256 bytes tokens + 1 <endoftext> token
+    
+class GPT(nn.Module):
+    
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        
+        self.transformer = nn.ModuleDict(dict( 
+            wte = nn.Embedding(config.vocab_size, config.n_embd), # input embedding
+            wpe = nn.Embedding(config.block_size, config.n_embd), # positional encoding
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]) # the transformer blocks
+            ln_f = nn.LayerNorm(config.n_embd) # final layer normalization
+        ))
+        
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # output embedding
+
+        # weight sharing scheme
+        self.transformer.wte.weight = self.lm_head.weight
+
+        # init weights
+        self.apply(self._init_weights)
