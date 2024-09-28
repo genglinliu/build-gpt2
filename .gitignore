@@ -6,3 +6,5 @@ hellaswag/*
 edu_fineweb10B/*
 # ignore __pycache__ folders
 __pycache__/*
+# ignore wandb files
+wandb/*

@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from hellaswag import render_example, iterate_examples
+import wandb
+
 # -----------------------------------------------------------------------------
 
 class CausalSelfAttention(nn.Module):
@@ -368,6 +370,20 @@ def get_lr(it):
 # optimize!
 optimizer = raw_model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, device_type=device_type)
 
+
+# Initialize wandb
+if master_process:
+    wandb.init(project="gpt2-training", config={
+        "total_batch_size": total_batch_size,
+        "micro_batch_size": B,
+        "sequence_length": T,
+        "max_lr": max_lr,
+        "min_lr": min_lr,
+        "warmup_steps": warmup_steps,
+        "max_steps": max_steps,
+    })
+
+
 # create the log directory we will write checkpoints to and log to
 log_dir = "log"
 os.makedirs(log_dir, exist_ok=True)
@@ -397,6 +413,7 @@ for step in range(max_steps):
             dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
         if master_process:
             print(f"validation loss: {val_loss_accum.item():.4f}")
+            wandb.log({"validation loss": val_loss_accum.item()}, step=step)
             with open(log_file, "a") as f:
                 f.write(f"{step} val {val_loss_accum.item():.4f}\n")
             if step > 0 and (step % 5000 == 0 or last_step):
@@ -442,6 +459,7 @@ for step in range(max_steps):
         acc_norm = num_correct_norm / num_total
         if master_process:
             print(f"HellaSwag accuracy: {num_correct_norm}/{num_total}={acc_norm:.4f}")
+            wandb.log({"HellaSwag accuracy": acc_norm}, step=step)
             with open(log_file, "a") as f:
                 f.write(f"{step} hella {acc_norm:.4f}\n")
 
@@ -516,8 +534,20 @@ for step in range(max_steps):
     tokens_per_sec = tokens_processed / dt
     if master_process:
         print(f"step {step:5d} | loss: {loss_accum.item():.6f} | lr {lr:.4e} | norm: {norm:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
+        # Log training metrics to wandb
+        wandb.log({
+            "train/loss": loss_accum.item(),
+            "train/lr": lr,
+            "train/grad_norm": norm,
+            "train/tokens_per_sec": tokens_per_sec,
+        }, step=step)
+        
         with open(log_file, "a") as f:
             f.write(f"{step} train {loss_accum.item():.6f}\n")
+
+# Finish wandb run
+if master_process:
+    wandb.finish()
 
 if ddp:
     destroy_process_group()
