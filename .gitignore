@@ -1,0 +1,8 @@
+# ignore all files in the log directory
+log/*
+# ignore the hellaswag folder
+hellaswag/*
+# ignore the edu_fineweb10B folder
+edu_fineweb10B/*
+# ignore __pycache__ folders
+__pycache__/*
